@@ -187,30 +187,57 @@ export default function ReportsPage() {
   };
 
   const handleExportExcel = () => {
-    const headers = ['排名', '门店名称', '区域', '综合评分', '陈列得分', '库存得分', '价签得分', '促销得分', '整改得分', '环比变化'];
-    const rows = filteredRankings.map(r => [
-      r.rank,
-      r.storeName,
-      r.district,
-      r.overallScore.toFixed(1),
-      r.displayScore,
-      r.stockScore,
-      r.priceTagScore,
-      r.promotionScore,
-      r.rectificationScore,
-      (r.trend >= 0 ? '+' : '') + r.trend.toFixed(1),
-    ]);
+    const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="UTF-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>门店经营报表</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+<style>
+  td, th { padding: 6px 10px; font-size: 12px; font-family: 'Microsoft YaHei', sans-serif; }
+  th { background-color: #4F46E5; color: #FFFFFF; font-weight: bold; text-align: center; border: 1px solid #3730A3; }
+  td { border: 1px solid #D1D5DB; text-align: center; }
+  tr:nth-child(even) td { background-color: #F8FAFC; }
+  .score { font-weight: bold; color: #4F46E5; }
+  .up { color: #10B981; }
+  .down { color: #EF4444; }
+</style>
+</head>
+<body>
+<table>
+  <tr>
+    <th>排名</th>
+    <th>门店名称</th>
+    <th>区域</th>
+    <th>综合评分</th>
+    <th>陈列得分</th>
+    <th>库存得分</th>
+    <th>价签得分</th>
+    <th>促销得分</th>
+    <th>整改得分</th>
+    <th>环比变化</th>
+  </tr>
+  ${filteredRankings.map(r => `
+  <tr>
+    <td>${r.rank}</td>
+    <td style="text-align:left;">${r.storeName}</td>
+    <td>${r.district}</td>
+    <td class="score">${r.overallScore.toFixed(1)}</td>
+    <td>${r.displayScore}</td>
+    <td>${r.stockScore}</td>
+    <td>${r.priceTagScore}</td>
+    <td>${r.promotionScore}</td>
+    <td>${r.rectificationScore}</td>
+    <td class="${r.trend >= 0 ? 'up' : 'down'}">${r.trend >= 0 ? '↑' : '↓'}${Math.abs(r.trend).toFixed(1)}</td>
+  </tr>`).join('')}
+</table>
+</body>
+</html>`;
 
-    const csvContent = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
-
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `门店经营报表_${formatDate(new Date())}.csv`;
+    link.download = `门店经营报表_${formatDate(new Date())}.xls`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

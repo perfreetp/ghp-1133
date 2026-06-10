@@ -56,12 +56,16 @@ export default function PhotoVerificationPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { getTaskById, updateItemStatus, addPhotoRecord, addIssueRecord, currentUser } = useAppStore();
+  const tasks = useAppStore(state => state.tasks);
+  const updateItemStatus = useAppStore(state => state.updateItemStatus);
+  const addPhotoRecord = useAppStore(state => state.addPhotoRecord);
+  const addIssueRecord = useAppStore(state => state.addIssueRecord);
+  const currentUser = useAppStore(state => state.currentUser);
 
   const task = useMemo(() => {
     if (!taskId) return undefined;
-    return getTaskById(taskId);
-  }, [taskId, getTaskById]);
+    return tasks.find(t => t.id === taskId);
+  }, [tasks, taskId]);
 
   const items = task?.items || [];
 

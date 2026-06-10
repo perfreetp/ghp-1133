@@ -54,17 +54,18 @@ const rankMedalColors = [
 ];
 
 export default function ReplenishmentPage() {
-  const {
-    getStoresByCurrentUser,
-    getReplenishmentsByStoreId,
-    batchUpdateReplenishmentStatus,
-    currentUser,
-  } = useAppStore();
+  const stores = useAppStore(state =>
+    state.currentUser.role === 'supervisor'
+      ? state.stores
+      : state.stores.filter(s => state.currentUser.storeIds.includes(s.id))
+  );
+  const replenishments = useAppStore(state => state.replenishments);
+  const currentUser = useAppStore(state => state.currentUser);
+  const batchUpdateReplenishmentStatus = useAppStore(state => state.batchUpdateReplenishmentStatus);
 
-  const stores = getStoresByCurrentUser();
   const allReplenishments = useMemo(
-    () => stores.flatMap((s) => getReplenishmentsByStoreId(s.id)),
-    [stores, getReplenishmentsByStoreId]
+    () => replenishments.filter(r => stores.some(s => s.id === r.storeId)),
+    [replenishments, stores]
   );
 
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(
