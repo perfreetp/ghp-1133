@@ -135,3 +135,60 @@
 :root {
   color-scheme: light;
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  body {
+    background: white !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  aside,
+  header {
+    display: none !important;
+  }
+
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .flex.h-screen.w-screen {
+    display: block !important;
+    height: auto !important;
+    width: auto !important;
+    overflow: visible !important;
+  }
+
+  .flex.flex-col.flex-1 {
+    display: block !important;
+    min-width: auto !important;
+    overflow: visible !important;
+  }
+
+  .shadow-card {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0;
+  }
+
+  .animate-fade-in {
+    animation: none !important;
+  }
+}
+
+.print-only {
+  display: none;
+}

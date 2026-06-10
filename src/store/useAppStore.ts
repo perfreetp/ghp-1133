@@ -24,6 +24,18 @@ export interface User {
   city: string;
 }
 
+export interface Shelf {
+  id: string;
+  name: string;
+  type: 'shelf' | 'endcap' | 'promotion' | 'checkout';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  category?: string;
+  levelCount: number;
+}
+
 export interface Store {
   id: string;
   name: string;
@@ -38,6 +50,8 @@ export interface Store {
   managerId: string;
   managerName: string;
   openDate: string;
+  floorPlanUrl?: string;
+  shelves: Shelf[];
 }
 
 export interface DisplayStandard {
@@ -152,6 +166,7 @@ export interface RectificationOrder {
 export interface ReplenishmentSuggestion {
   id: string;
   storeId: string;
+  storeName: string;
   skuId: string;
   skuName: string;
   category: string;
@@ -201,6 +216,31 @@ const mockUsers: User[] = [
   },
 ];
 
+const generateShelves = (storeId: string): Shelf[] => {
+  const baseShelves: Omit<Shelf, 'id'>[] = [
+    { name: '饮料主货架 A1', type: 'shelf', x: 12, y: 40, width: 80, height: 22, category: 'drinks', levelCount: 5 },
+    { name: '饮料主货架 A2', type: 'shelf', x: 12, y: 70, width: 80, height: 22, category: 'drinks', levelCount: 5 },
+    { name: '饮料端架 A-端', type: 'endcap', x: 95, y: 40, width: 22, height: 52, category: 'drinks', levelCount: 6 },
+    { name: '零食主货架 B1', type: 'shelf', x: 140, y: 40, width: 80, height: 22, category: 'snacks', levelCount: 5 },
+    { name: '零食主货架 B2', type: 'shelf', x: 140, y: 70, width: 80, height: 22, category: 'snacks', levelCount: 5 },
+    { name: '零食端架 B-端', type: 'endcap', x: 115, y: 70, width: 22, height: 22, category: 'snacks', levelCount: 4 },
+    { name: '日用品货架 C1', type: 'shelf', x: 270, y: 40, width: 80, height: 22, category: 'daily', levelCount: 5 },
+    { name: '日用品货架 C2', type: 'shelf', x: 270, y: 70, width: 80, height: 22, category: 'daily', levelCount: 5 },
+    { name: '鲜食冷柜 D', type: 'shelf', x: 360, y: 20, width: 90, height: 60, category: 'fresh', levelCount: 4 },
+    { name: '冷冻冰柜 E', type: 'shelf', x: 400, y: 90, width: 80, height: 50, category: 'frozen', levelCount: 3 },
+    { name: '收银台货架 F', type: 'checkout', x: 440, y: 180, width: 70, height: 28, category: 'snacks', levelCount: 3 },
+    { name: '促销堆头1 G1', type: 'promotion', x: 130, y: 170, width: 90, height: 40, category: 'drinks', levelCount: 2 },
+    { name: '促销堆头2 G2', type: 'promotion', x: 260, y: 170, width: 90, height: 40, category: 'snacks', levelCount: 2 },
+  ];
+  const seed = storeId.charCodeAt(storeId.length - 1);
+  return baseShelves.map((s, i) => ({
+    ...s,
+    id: `sh-${storeId}-${i + 1}`,
+    x: s.x + (seed % 5) * 2,
+    y: s.y + (seed % 3) * 3,
+  }));
+};
+
 const mockStores: Store[] = [
   {
     id: 's001',
@@ -216,6 +256,8 @@ const mockStores: Store[] = [
     managerId: 'u002',
     managerName: '李雪琴',
     openDate: '2024-03-15',
+    floorPlanUrl: '',
+    shelves: generateShelves('s001'),
   },
   {
     id: 's002',
@@ -231,6 +273,8 @@ const mockStores: Store[] = [
     managerId: 'u003',
     managerName: '王建国',
     openDate: '2024-05-20',
+    floorPlanUrl: '',
+    shelves: generateShelves('s002'),
   },
   {
     id: 's003',
@@ -246,6 +290,8 @@ const mockStores: Store[] = [
     managerId: 'u004',
     managerName: '赵美丽',
     openDate: '2024-06-10',
+    floorPlanUrl: '',
+    shelves: generateShelves('s003'),
   },
   {
     id: 's004',
@@ -261,6 +307,8 @@ const mockStores: Store[] = [
     managerId: 'u005',
     managerName: '孙大伟',
     openDate: '2024-08-01',
+    floorPlanUrl: '',
+    shelves: generateShelves('s004'),
   },
   {
     id: 's005',
@@ -276,6 +324,8 @@ const mockStores: Store[] = [
     managerId: 'u006',
     managerName: '周小花',
     openDate: '2024-09-15',
+    floorPlanUrl: '',
+    shelves: generateShelves('s005'),
   },
 ];
 
@@ -898,50 +948,96 @@ const mockOrders: RectificationOrder[] = [
   },
 ];
 
-const mockReplenishments: ReplenishmentSuggestion[] = [
-  {
-    id: 'rp001',
-    storeId: 's001',
-    skuId: 'sku001',
-    skuName: '可口可乐 330ml*24罐',
-    category: '饮料',
-    currentStock: 5,
-    safetyStock: 20,
-    suggestedQty: 50,
-    urgency: 'critical',
-    priority: 'critical',
-    status: 'pending',
-    lastReplenishedAt: '2026-06-05',
-  },
-  {
-    id: 'rp002',
-    storeId: 's001',
-    skuId: 'sku002',
-    skuName: '乐事薯片 原味 70g',
-    category: '零食',
-    currentStock: 12,
-    safetyStock: 30,
-    suggestedQty: 40,
-    urgency: 'urgent',
-    priority: 'urgent',
-    status: 'ordered',
-    lastReplenishedAt: '2026-06-07',
-  },
-  {
-    id: 'rp003',
-    storeId: 's002',
-    skuId: 'sku003',
-    skuName: '农夫山泉 550ml*24瓶',
-    category: '饮料',
-    currentStock: 8,
-    safetyStock: 25,
-    suggestedQty: 60,
-    urgency: 'urgent',
-    priority: 'high',
-    status: 'completed',
-    lastReplenishedAt: '2026-06-06',
-  },
+const skuList = [
+  { name: '可口可乐 330ml*24罐', category: '饮料', baseStock: 20, baseSafety: 15 },
+  { name: '百事可乐 500ml*24瓶', category: '饮料', baseStock: 25, baseSafety: 18 },
+  { name: '农夫山泉 550ml*24瓶', category: '饮料', baseStock: 30, baseSafety: 20 },
+  { name: '东方乌龙茶 500ml*15瓶', category: '饮料', baseStock: 18, baseSafety: 12 },
+  { name: '红牛功能饮料 250ml*24罐', category: '饮料', baseStock: 15, baseSafety: 10 },
+  { name: '乐事薯片 原味 70g', category: '零食', baseStock: 20, baseSafety: 15 },
+  { name: '奥利奥饼干 原味 116g', category: '零食', baseStock: 25, baseSafety: 18 },
+  { name: '德芙巧克力 丝滑牛奶 43g', category: '零食', baseStock: 18, baseSafety: 12 },
+  { name: '三只松鼠每日坚果 750g', category: '零食', baseStock: 10, baseSafety: 8 },
+  { name: '康师傅红烧牛肉面 5连包', category: '零食', baseStock: 22, baseSafety: 16 },
+  { name: '海飞丝洗发水 750ml', category: '日用品', baseStock: 12, baseSafety: 8 },
+  { name: '云南白药牙膏 180g', category: '日用品', baseStock: 15, baseSafety: 10 },
+  { name: '维达抽纸 3层120抽', category: '日用品', baseStock: 30, baseSafety: 20 },
+  { name: '蓝月亮洗衣液 3kg', category: '日用品', baseStock: 10, baseSafety: 7 },
+  { name: '全家火腿蛋三明治 150g', category: '鲜食', baseStock: 20, baseSafety: 15 },
+  { name: '奥尔良鸡腿便当 350g', category: '鲜食', baseStock: 15, baseSafety: 10 },
+  { name: '三文鱼寿司拼盘 180g', category: '鲜食', baseStock: 8, baseSafety: 6 },
+  { name: '曼可顿全麦面包 400g', category: '鲜食', baseStock: 12, baseSafety: 8 },
+  { name: '思念三鲜水饺 1kg', category: '冷冻', baseStock: 15, baseSafety: 10 },
+  { name: '和路雪梦龙冰淇淋 64g', category: '冷冻', baseStock: 25, baseSafety: 18 },
 ];
+
+const generateReplenishments = (): ReplenishmentSuggestion[] => {
+  const result: ReplenishmentSuggestion[] = [];
+  let id = 1;
+  const stores = ['s001', 's002', 's003', 's004', 's005'];
+  const storeNames: Record<string, string> = {
+    s001: '陆家嘴旗舰店',
+    s002: '南京东路店',
+    s003: '徐家汇店',
+    s004: '五角场店',
+    s005: '中山公园店',
+  };
+  
+  stores.forEach((storeId) => {
+    const seed = parseInt(storeId.replace('s', ''));
+    skuList.forEach((sku, idx) => {
+      const variance = ((seed * 7 + idx * 13) % 100) - 50;
+      const currentStock = Math.max(0, sku.baseStock + Math.floor(variance * 0.3));
+      const safetyStock = sku.baseSafety;
+      const suggestedQty = Math.max(0, safetyStock * 2 - currentStock + Math.floor(Math.random() * 10));
+      
+      let urgency: 'normal' | 'urgent' | 'critical';
+      if (currentStock === 0 || currentStock < safetyStock * 0.2) {
+        urgency = 'critical';
+      } else if (currentStock < safetyStock * 0.6) {
+        urgency = 'urgent';
+      } else {
+        urgency = 'normal';
+      }
+      
+      let priority: 'low' | 'medium' | 'high' | 'urgent' | 'critical';
+      if (urgency === 'critical') priority = 'critical';
+      else if (urgency === 'urgent') priority = 'high';
+      else priority = 'medium';
+      
+      const statuses: ReplenishmentSuggestion['status'][] = ['pending', 'pending', 'pending', 'ordered', 'completed', 'cancelled'];
+      const statusIndex = (seed + idx) % statuses.length;
+      const status = statuses[statusIndex];
+      
+      const daysAgo = (idx * 2 + seed) % 10;
+      const date = new Date('2026-06-10');
+      date.setDate(date.getDate() - daysAgo);
+      const lastReplenishedAt = date.toISOString().slice(0, 10);
+      
+      if (currentStock < safetyStock || status !== 'pending') {
+        result.push({
+          id: `rp${String(id++).padStart(3, '0')}`,
+          storeId,
+          storeName: storeNames[storeId],
+          skuId: `sku${String(idx + 1).padStart(3, '0')}`,
+          skuName: sku.name,
+          category: sku.category,
+          currentStock,
+          safetyStock,
+          suggestedQty,
+          urgency,
+          priority,
+          status,
+          lastReplenishedAt,
+        });
+      }
+    });
+  });
+  
+  return result;
+};
+
+const mockReplenishments: ReplenishmentSuggestion[] = generateReplenishments();
 
 const mockScores: StoreScore[] = [
   {
@@ -1025,6 +1121,18 @@ interface AppState {
   updateItemStatus: (taskId: string, itemId: string, status: ItemStatus) => void;
   addPhotoRecord: (taskId: string, itemId: string, photo: PhotoRecord) => void;
   addIssueRecord: (taskId: string, itemId: string, issue: IssueRecord) => void;
+
+  addStandard: (standard: Omit<DisplayStandard, 'id' | 'updatedAt'>) => DisplayStandard;
+  updateStandard: (id: string, data: Partial<DisplayStandard>) => void;
+  toggleStandard: (id: string) => void;
+  deleteStandard: (id: string) => void;
+
+  setFloorPlan: (storeId: string, imageUrl: string) => void;
+  addShelf: (storeId: string, shelf: Omit<Shelf, 'id'>) => Shelf;
+  updateShelf: (storeId: string, shelfId: string, data: Partial<Shelf>) => void;
+  deleteShelf: (storeId: string, shelfId: string) => void;
+
+  batchUpdateReplenishmentStatus: (ids: string[], status: ReplenishmentSuggestion['status']) => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 10);
@@ -1207,5 +1315,95 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       return { tasks };
     });
+  },
+
+  addStandard: (standard) => {
+    const newStandard: DisplayStandard = {
+      ...standard,
+      id: `ds-${generateId()}`,
+      updatedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    };
+    set((state) => ({ standards: [newStandard, ...state.standards] }));
+    return newStandard;
+  },
+
+  updateStandard: (id, data) => {
+    set((state) => ({
+      standards: state.standards.map((s) =>
+        s.id === id
+          ? { ...s, ...data, updatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') }
+          : s
+      ),
+    }));
+  },
+
+  toggleStandard: (id) => {
+    set((state) => ({
+      standards: state.standards.map((s) =>
+        s.id === id
+          ? { ...s, enabled: !s.enabled, updatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') }
+          : s
+      ),
+    }));
+  },
+
+  deleteStandard: (id) => {
+    set((state) => ({
+      standards: state.standards.filter((s) => s.id !== id),
+    }));
+  },
+
+  setFloorPlan: (storeId, imageUrl) => {
+    set((state) => ({
+      stores: state.stores.map((s) =>
+        s.id === storeId ? { ...s, floorPlanUrl: imageUrl } : s
+      ),
+    }));
+  },
+
+  addShelf: (storeId, shelf) => {
+    const newShelf: Shelf = {
+      ...shelf,
+      id: `sh-${generateId()}`,
+    };
+    set((state) => ({
+      stores: state.stores.map((s) =>
+        s.id === storeId ? { ...s, shelves: [...s.shelves, newShelf] } : s
+      ),
+    }));
+    return newShelf;
+  },
+
+  updateShelf: (storeId, shelfId, data) => {
+    set((state) => ({
+      stores: state.stores.map((s) =>
+        s.id === storeId
+          ? {
+              ...s,
+              shelves: s.shelves.map((sh) =>
+                sh.id === shelfId ? { ...sh, ...data } : sh
+              ),
+            }
+          : s
+      ),
+    }));
+  },
+
+  deleteShelf: (storeId, shelfId) => {
+    set((state) => ({
+      stores: state.stores.map((s) =>
+        s.id === storeId
+          ? { ...s, shelves: s.shelves.filter((sh) => sh.id !== shelfId) }
+          : s
+      ),
+    }));
+  },
+
+  batchUpdateReplenishmentStatus: (ids, status) => {
+    set((state) => ({
+      replenishments: state.replenishments.map((r) =>
+        ids.includes(r.id) ? { ...r, status } : r
+      ),
+    }));
   },
 }));

@@ -1,14 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import {
   Store as StoreIcon,
   Search,
   Star,
   MapPin,
   User,
-  Layers,
   Upload,
   Clock,
-  ThermometerSun,
   Sun,
   Coffee,
   Users,
@@ -17,15 +15,20 @@ import {
   ShoppingBasket,
   Info,
   X,
+  Plus,
+  Image as ImageIcon,
+  Package,
+  Tag,
 } from 'lucide-react';
 import StatCard from '@/components/ui/StatCard';
 import StatusBadge from '@/components/ui/StatusBadge';
-import { useAppStore, type Store as StoreType } from '@/store/useAppStore';
+import { useAppStore, type Store as StoreType, type Shelf } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 
 type StatusFilter = 'all' | 'normal' | 'warning' | 'critical';
 type MapTab = 'distribution' | 'floorplan';
 type TimePeriod = 'morning' | 'noon' | 'evening' | 'all';
+type ShelfType = 'shelf' | 'endcap' | 'promotion' | 'checkout';
 
 const statusBadgeMap: Record<StoreType['status'], { type: 'success' | 'warning' | 'danger'; label: string }> = {
   normal: { type: 'success', label: '正常' },
@@ -37,6 +40,13 @@ const statusDotMap: Record<StoreType['status'], string> = {
   normal: 'bg-success-500',
   warning: 'bg-warning-500',
   critical: 'bg-danger-500',
+};
+
+const shelfTypeConfig: Record<ShelfType, { label: string; color: string; borderColor: string; bgColor: string; textColor: string }> = {
+  shelf: { label: '普通货架', color: '#2563EB', borderColor: 'border-brand-500', bgColor: 'bg-brand-500/25', textColor: 'text-brand-700' },
+  endcap: { label: '端架', color: '#F97316', borderColor: 'border-warning-500', bgColor: 'bg-warning-500/30', textColor: 'text-warning-700' },
+  promotion: { label: '促销堆头', color: '#9333EA', borderColor: 'border-purple-500', bgColor: 'bg-purple-500/25', textColor: 'text-purple-700' },
+  checkout: { label: '收银台货架', color: '#10B981', borderColor: 'border-success-500', bgColor: 'bg-success-500/25', textColor: 'text-success-700' },
 };
 
 function renderStars(score: number) {
@@ -69,7 +79,17 @@ interface MapMarker {
 }
 
 function StoreMapPage() {
-  const { stores, selectedStoreId, setSelectedStoreId, currentUser } = useAppStore();
+  const {
+    stores,
+    selectedStoreId,
+    setSelectedStoreId,
+    currentUser,
+    setFloorPlan,
+    addShelf,
+    updateShelf,
+    deleteShelf,
+  } = useAppStore();
+
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [mapTab, setMapTab] = useState<MapTab>('distribution');
@@ -79,6 +99,14 @@ function StoreMapPage() {
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showEndCaps, setShowEndCaps] = useState(true);
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('all');
+
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [editingShelfId, setEditingShelfId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [draggingShelfId, setDraggingShelfId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const accessibleStores = useMemo(() => {
     if (currentUser.role === 'supervisor') return stores;
@@ -133,22 +161,122 @@ function StoreMapPage() {
   }, [selectedStore, timePeriod]);
 
   const shelves = useMemo(() => {
-    return [
-      { id: 'sh1', name: '饮料主货架 A1', x: 12, y: 40, w: 80, h: 22, type: 'shelf' as const },
-      { id: 'sh2', name: '饮料主货架 A2', x: 12, y: 70, w: 80, h: 22, type: 'shelf' as const },
-      { id: 'sh3', name: '饮料端架 A-端', x: 95, y: 40, w: 22, h: 52, type: 'endcap' as const },
-      { id: 'sh4', name: '零食主货架 B1', x: 140, y: 40, w: 80, h: 22, type: 'shelf' as const },
-      { id: 'sh5', name: '零食主货架 B2', x: 140, y: 70, w: 80, h: 22, type: 'shelf' as const },
-      { id: 'sh6', name: '零食端架 B-端', x: 115, y: 70, w: 22, h: 22, type: 'endcap' as const },
-      { id: 'sh7', name: '日用品货架 C1', x: 270, y: 40, w: 80, h: 22, type: 'shelf' as const },
-      { id: 'sh8', name: '日用品货架 C2', x: 270, y: 70, w: 80, h: 22, type: 'shelf' as const },
-      { id: 'sh9', name: '鲜食冷柜 D', x: 360, y: 20, w: 90, h: 60, type: 'shelf' as const },
-      { id: 'sh10', name: '冷冻冰柜 E', x: 400, y: 90, w: 80, h: 50, type: 'shelf' as const },
-      { id: 'sh11', name: '收银台货架 F', x: 440, y: 180, w: 70, h: 28, type: 'endcap' as const },
-      { id: 'sh12', name: '促销堆头1 G1', x: 130, y: 170, w: 90, h: 40, type: 'shelf' as const },
-      { id: 'sh13', name: '促销堆头2 G2', x: 260, y: 170, w: 90, h: 40, type: 'shelf' as const },
-    ];
+    return selectedStore?.shelves || [];
+  }, [selectedStore]);
+
+  const isSupervisor = currentUser.role === 'supervisor';
+
+  const handleUploadFloorPlan = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedStore) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setFloorPlan(selectedStore.id, dataUrl);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleAddShelf = (type: ShelfType) => {
+    if (!selectedStore || !isSupervisor) return;
+
+    const config = shelfTypeConfig[type];
+    const newShelf: Omit<Shelf, 'id'> = {
+      name: `${config.label}${shelves.filter(s => s.type === type).length + 1}`,
+      type,
+      x: 30,
+      y: 30,
+      width: type === 'endcap' ? 25 : type === 'checkout' ? 80 : 80,
+      height: type === 'endcap' ? 55 : type === 'checkout' ? 30 : 25,
+      levelCount: type === 'promotion' ? 2 : type === 'checkout' ? 3 : 5,
+    };
+
+    addShelf(selectedStore.id, newShelf);
+    setShowAddMenu(false);
+  };
+
+  const handleDeleteShelf = (shelfId: string) => {
+    if (!selectedStore || !isSupervisor) return;
+    deleteShelf(selectedStore.id, shelfId);
+  };
+
+  const handleStartEdit = (shelf: Shelf) => {
+    if (!isSupervisor) return;
+    setEditingShelfId(shelf.id);
+    setEditName(shelf.name);
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedStore || !editingShelfId) return;
+    updateShelf(selectedStore.id, editingShelfId, { name: editName });
+    setEditingShelfId(null);
+    setEditName('');
+  };
+
+  const handleShelfMouseDown = (e: React.MouseEvent, shelfId: string) => {
+    if (!isSupervisor || editingShelfId) return;
+    e.stopPropagation();
+
+    const shelf = shelves.find(s => s.id === shelfId);
+    if (!shelf || !svgRef.current) return;
+
+    const svg = svgRef.current;
+    const svgPoint = svg.createSVGPoint();
+    svgPoint.x = e.clientX;
+    svgPoint.y = e.clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+
+    const point = svgPoint.matrixTransform(ctm.inverse());
+
+    setDraggingShelfId(shelfId);
+    setDragOffset({
+      x: point.x - shelf.x,
+      y: point.y - shelf.y,
+    });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!draggingShelfId || !svgRef.current || !selectedStore) return;
+
+    const svg = svgRef.current;
+    const svgPoint = svg.createSVGPoint();
+    svgPoint.x = e.clientX;
+    svgPoint.y = e.clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+
+    const point = svgPoint.matrixTransform(ctm.inverse());
+    const newX = Math.max(5, Math.min(510, point.x - dragOffset.x));
+    const newY = Math.max(5, Math.min(230, point.y - dragOffset.y));
+
+    updateShelf(selectedStore.id, draggingShelfId, { x: newX, y: newY });
+  };
+
+  const handleMouseUp = () => {
+    setDraggingShelfId(null);
+  };
+
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setDraggingShelfId(null);
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
   }, []);
+
+  const visibleShelves = useMemo(() => {
+    if (!showShelves && !showEndCaps) return [];
+    return shelves.filter(s => {
+      if (s.type === 'endcap' && !showEndCaps) return false;
+      if (s.type !== 'endcap' && !showShelves) return false;
+      return true;
+    });
+  }, [shelves, showShelves, showEndCaps]);
+
+  const svgViewBox = "0 0 520 240";
 
   return (
     <div className="space-y-5">
@@ -170,7 +298,7 @@ function StoreMapPage() {
           title="预警门店"
           value={stats.warning}
           change={-5.2}
-          icon={<ThermometerSun className="h-5 w-5 text-warning-600" />}
+          icon={<Sun className="h-5 w-5 text-warning-600" />}
           trendData={[1, 1, 1, 1, 2, 1]}
         />
         <StatCard
@@ -439,11 +567,59 @@ function StoreMapPage() {
             ) : (
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/50 p-3">
-                  <button className="flex items-center gap-1.5 rounded-md bg-brand-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-brand-600">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleUploadFloorPlan}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => isSupervisor && fileInputRef.current?.click()}
+                    disabled={!isSupervisor}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm transition',
+                      isSupervisor
+                        ? 'bg-brand-500 text-white hover:bg-brand-600'
+                        : 'cursor-not-allowed bg-slate-200 text-slate-400'
+                    )}
+                  >
                     <Upload className="h-3.5 w-3.5" />
                     上传平面图
                   </button>
+
+                  {isSupervisor && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowAddMenu(!showAddMenu)}
+                        className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        添加货架
+                      </button>
+
+                      {showAddMenu && (
+                        <div className="absolute left-0 top-full z-20 mt-1 w-36 rounded-lg border border-slate-200 bg-white py-1 shadow-popover">
+                          {(Object.keys(shelfTypeConfig) as ShelfType[]).map((type) => (
+                            <button
+                              key={type}
+                              onClick={() => handleAddShelf(type)}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                            >
+                              <span
+                                className={cn('h-3 w-3 rounded-sm', shelfTypeConfig[type].bgColor)}
+                                style={{ backgroundColor: shelfTypeConfig[type].color + '40' }}
+                              />
+                              {shelfTypeConfig[type].label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="h-5 w-px bg-slate-200" />
+
                   <div className="flex items-center gap-3">
                     <label className="flex cursor-pointer items-center gap-1.5 text-xs">
                       <input
@@ -452,7 +628,7 @@ function StoreMapPage() {
                         onChange={(e) => setShowShelves(e.target.checked)}
                         className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400"
                       />
-                      <Layers className="h-3.5 w-3.5 text-slate-500" />
+                      <Package className="h-3.5 w-3.5 text-slate-500" />
                       <span className="text-slate-600">货架标注</span>
                     </label>
                     <label className="flex cursor-pointer items-center gap-1.5 text-xs">
@@ -472,11 +648,13 @@ function StoreMapPage() {
                         onChange={(e) => setShowEndCaps(e.target.checked)}
                         className="h-3.5 w-3.5 rounded border-slate-300 text-brand-500 focus:ring-brand-400"
                       />
-                      <LayoutGrid className="h-3.5 w-3.5 text-warning-500" />
+                      <Tag className="h-3.5 w-3.5 text-warning-500" />
                       <span className="text-slate-600">端架位置</span>
                     </label>
                   </div>
+
                   <div className="h-5 w-px bg-slate-200" />
+
                   <div className="flex items-center gap-1 rounded-md bg-white p-0.5 ring-1 ring-slate-200">
                     {(
                       [
@@ -501,10 +679,29 @@ function StoreMapPage() {
                       </button>
                     ))}
                   </div>
+
+                  {!isSupervisor && (
+                    <span className="ml-auto text-xs text-slate-400">
+                      只读模式 - 店长权限
+                    </span>
+                  )}
                 </div>
 
-                <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 ring-1 ring-slate-300/60">
-                  <svg className="absolute inset-0 h-full w-full" viewBox="0 0 520 240" preserveAspectRatio="xMidYMid meet">
+                <div
+                  className="relative aspect-[16/10] w-full overflow-hidden rounded-xl ring-1 ring-slate-300/60"
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onClick={() => {
+                    setShowAddMenu(false);
+                    setEditingShelfId(null);
+                  }}
+                >
+                  <svg
+                    ref={svgRef}
+                    className="absolute inset-0 h-full w-full"
+                    viewBox={svgViewBox}
+                    preserveAspectRatio="xMidYMid meet"
+                  >
                     <defs>
                       <pattern id="floor" width="20" height="20" patternUnits="userSpaceOnUse">
                         <rect width="20" height="20" fill="#F8FAFC" />
@@ -526,7 +723,20 @@ function StoreMapPage() {
                         <stop offset="100%" stopColor="#60A5FA" stopOpacity="0" />
                       </radialGradient>
                     </defs>
-                    <rect width="520" height="240" fill="url(#floor)" />
+
+                    {selectedStore?.floorPlanUrl ? (
+                      <image
+                        href={selectedStore.floorPlanUrl}
+                        x="0"
+                        y="0"
+                        width="520"
+                        height="240"
+                        preserveAspectRatio="xMidYMid slice"
+                        opacity="0.6"
+                      />
+                    ) : (
+                      <rect width="520" height="240" fill="url(#floor)" />
+                    )}
 
                     <rect x="1" y="1" width="518" height="238" fill="none" stroke="#94A3B8" strokeWidth="2" rx="4" />
                     <rect x="1" y="1" width="60" height="30" fill="none" stroke="#10B981" strokeWidth="1.5" strokeDasharray="3 2" />
@@ -550,63 +760,102 @@ function StoreMapPage() {
                         </g>
                       ))}
 
-                    {showShelves &&
-                      shelves
-                        .filter((s) => s.type !== 'endcap')
-                        .map((s) => (
-                          <g key={s.id}>
-                            <rect
-                              x={s.x}
-                              y={s.y}
-                              width={s.w}
-                              height={s.h}
-                              fill="#60A5FA"
-                              fillOpacity="0.25"
-                              stroke="#2563EB"
-                              strokeWidth="1"
-                              rx="2"
-                            />
-                            <text
-                              x={s.x + s.w / 2}
-                              y={s.y + s.h / 2 + 2.5}
-                              textAnchor="middle"
-                              fontSize="7"
-                              fill="#1E40AF"
-                              fontWeight="600"
-                            >
-                              {s.name}
-                            </text>
-                          </g>
-                        ))}
+                    {visibleShelves.map((shelf) => {
+                      const config = shelfTypeConfig[shelf.type as ShelfType];
+                      const isEditing = editingShelfId === shelf.id;
+                      const isDragging = draggingShelfId === shelf.id;
 
-                    {showEndCaps &&
-                      shelves
-                        .filter((s) => s.type === 'endcap')
-                        .map((s) => (
-                          <g key={s.id}>
-                            <rect
-                              x={s.x}
-                              y={s.y}
-                              width={s.w}
-                              height={s.h}
-                              fill="#F97316"
-                              fillOpacity="0.3"
-                              stroke="#EA580C"
-                              strokeWidth="1.2"
-                              rx="2"
-                            />
+                      return (
+                        <g
+                          key={shelf.id}
+                          transform={`translate(${shelf.x}, ${shelf.y})`}
+                          onMouseDown={(e) => handleShelfMouseDown(e, shelf.id)}
+                          onDoubleClick={() => handleStartEdit(shelf)}
+                          onClick={(e) => e.stopPropagation()}
+                          className={cn(
+                            isSupervisor && 'cursor-move',
+                            isDragging && 'opacity-80'
+                          )}
+                          style={{ cursor: isSupervisor ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+                        >
+                          <rect
+                            width={shelf.width}
+                            height={shelf.height}
+                            fill={config.color + '30'}
+                            stroke={config.color}
+                            strokeWidth="1.5"
+                            rx="3"
+                            className={cn(
+                              'transition-all',
+                              isSupervisor && 'hover:stroke-[2px] hover:shadow-lg'
+                            )}
+                          />
+
+                          {isEditing ? (
+                            <foreignObject x="2" y={shelf.height / 2 - 10} width={shelf.width - 4} height="20">
+                              <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveEdit();
+                                  if (e.key === 'Escape') setEditingShelfId(null);
+                                }}
+                                autoFocus
+                                className="w-full rounded border border-brand-400 bg-white px-1 text-[8px] text-slate-800 outline-none focus:ring-1 focus:ring-brand-300"
+                                style={{ fontSize: '8px', height: '18px' }}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </foreignObject>
+                          ) : (
                             <text
-                              x={s.x + s.w / 2}
-                              y={s.y + s.h / 2 + 2.5}
+                              x={shelf.width / 2}
+                              y={shelf.height / 2 + 2.5}
                               textAnchor="middle"
                               fontSize="7"
-                              fill="#9A3412"
-                              fontWeight="700"
+                              fill={config.color}
+                              fontWeight="600"
+                              className="select-none pointer-events-none"
                             >
-                              {s.name}
+                              {shelf.name}
                             </text>
-                          </g>
-                        ))}
+                          )}
+
+                          {isSupervisor && !isEditing && (
+                            <g
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteShelf(shelf.id);
+                              }}
+                              className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                              style={{ opacity: 0 }}
+                            >
+                              <rect
+                                x={shelf.width - 10}
+                                y="-5"
+                                width="14"
+                                height="14"
+                                rx="7"
+                                fill="#EF4444"
+                                className="hover:fill-danger-600 transition-colors"
+                              />
+                              <X
+                                x={shelf.width - 6}
+                                y="-1"
+                                width="6"
+                                height="6"
+                                stroke="white"
+                                strokeWidth="1.5"
+                              />
+                            </g>
+                          )}
+
+                          {isSupervisor && (
+                            <title>{isDragging ? '拖动中...' : '双击编辑名称，拖动移动位置'}</title>
+                          )}
+                        </g>
+                      );
+                    })}
 
                     {showHeatmap &&
                       heatZones.map((z) => (
@@ -646,13 +895,15 @@ function StoreMapPage() {
                   {selectedStore && (
                     <div className="absolute right-3 top-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur">
                       <Info className="h-3.5 w-3.5 text-slate-400" />
-                      <span className="text-slate-500">面积：</span>
-                      <span className="font-semibold text-slate-700">
-                        {100 + (selectedStore.id.charCodeAt(selectedStore.id.length - 1) % 5) * 20}㎡
-                      </span>
-                      <span className="text-slate-400">·</span>
                       <span className="text-slate-500">货架数：</span>
                       <span className="font-semibold text-slate-700">{shelves.length}</span>
+                      {selectedStore.floorPlanUrl && (
+                        <>
+                          <span className="text-slate-400">·</span>
+                          <ImageIcon className="h-3.5 w-3.5 text-success-500" />
+                          <span className="text-success-600">已上传平面图</span>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

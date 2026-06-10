@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useRef, type ReactNode } from 'react';
 import {
   BarChart3,
   Calendar,
@@ -172,8 +172,281 @@ export default function ReportsPage() {
     其他: 3 + (idx % 5),
   }));
 
-  const topStores = storeRankings.slice(0, 3);
-  const bottomStores = [...storeRankings].sort((a, b) => a.overallScore - b.overallScore).slice(0, 3);
+  const filteredRankings = useMemo(() => {
+    return storeRankings.filter(r => selectedStores.includes(r.storeId));
+  }, [storeRankings, selectedStores]);
+
+  const topStores = filteredRankings.slice(0, 3);
+  const bottomStores = [...filteredRankings].sort((a, b) => a.overallScore - b.overallScore).slice(0, 3);
+
+  const formatDate = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}${m}${d}`;
+  };
+
+  const handleExportExcel = () => {
+    const headers = ['排名', '门店名称', '区域', '综合评分', '陈列得分', '库存得分', '价签得分', '促销得分', '整改得分', '环比变化'];
+    const rows = filteredRankings.map(r => [
+      r.rank,
+      r.storeName,
+      r.district,
+      r.overallScore.toFixed(1),
+      r.displayScore,
+      r.stockScore,
+      r.priceTagScore,
+      r.promotionScore,
+      r.rectificationScore,
+      (r.trend >= 0 ? '+' : '') + r.trend.toFixed(1),
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `门店经营报表_${formatDate(new Date())}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const weeklyReportRef = useRef<HTMLDivElement>(null);
+
+  const generateWeeklyReportHTML = () => {
+    const now = new Date();
+    const weekNum = Math.ceil((now.getDate() + new Date(now.getFullYear(), now.getMonth(), 1).getDay()) / 7);
+    const reportDate = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+
+    const avgScore = filteredRankings.length > 0
+      ? (filteredRankings.reduce((sum, r) => sum + r.overallScore, 0) / filteredRankings.length).toFixed(1)
+      : '0';
+
+    return `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>上海区域门店经营周报</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+      padding: 40px;
+      color: #0f172a;
+      line-height: 1.6;
+    }
+    .report-header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #6366F1; padding-bottom: 20px; }
+    .report-title { font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 8px; }
+    .report-subtitle { font-size: 13px; color: #64748b; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 12px; padding-left: 10px; border-left: 4px solid #6366F1; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .stat-card { background: #f8fafc; padding: 16px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #6366F1; }
+    .stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .store-list { display: flex; flex-direction: column; gap: 8px; }
+    .store-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-radius: 8px; }
+    .store-item.top { background: linear-gradient(to right, #ecfdf5, #f0fdf4); border: 1px solid #a7f3d0; }
+    .store-item.bottom { background: linear-gradient(to right, #fef2f2, #fff1f2); border: 1px solid #fecaca; }
+    .store-info { display: flex; align-items: center; gap: 12px; }
+    .rank-badge { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; }
+    .rank-1 { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; }
+    .rank-2 { background: linear-gradient(135deg, #94a3b8, #64748b); color: white; }
+    .rank-3 { background: linear-gradient(135deg, #fb923c, #f97316); color: white; }
+    .rank-other { background: #e2e8f0; color: #475569; }
+    .store-name { font-weight: 500; font-size: 14px; }
+    .store-district { font-size: 12px; color: #64748b; }
+    .store-score { font-weight: bold; font-size: 18px; }
+    .score-top { color: #10b981; }
+    .score-bottom { color: #ef4444; }
+    .problem-list { display: flex; flex-direction: column; gap: 10px; }
+    .problem-item { display: flex; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; }
+    .problem-tag { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .problem-tag.red { background: #fee2e2; color: #dc2626; }
+    .problem-tag.amber { background: #fef3c7; color: #d97706; }
+    .problem-tag.blue { background: #dbeafe; color: #2563eb; }
+    .problem-tag.purple { background: #f3e8ff; color: #9333ea; }
+    .problem-content { font-size: 13px; color: #475569; }
+    .todo-list { display: flex; flex-direction: column; gap: 8px; }
+    .todo-item { display: flex; gap: 10px; padding: 8px 0; font-size: 13px; color: #334155; }
+    .todo-check { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #3b82f6); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: white; font-size: 12px; }
+    .report-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f8fafc; font-weight: 600; color: #475569; }
+    .score-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+    .score-bar-fill { height: 100%; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="report-header">
+    <div class="report-title">上海区域门店经营周报</div>
+    <div class="report-subtitle">报告周期：${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate() - 6}日 - ${reportDate} | 生成日期：${reportDate}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">统计摘要</div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value">${filteredRankings.length}</div>
+        <div class="stat-label">门店数量</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${avgScore}</div>
+        <div class="stat-label">平均综合评分</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${topStores.length > 0 ? topStores[0].overallScore.toFixed(1) : '-'}</div>
+        <div class="stat-label">最高评分</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${bottomStores.length > 0 ? bottomStores[0].overallScore.toFixed(1) : '-'}</div>
+        <div class="stat-label">最低评分</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">TOP 3 最佳门店</div>
+    <div class="store-list">
+      ${topStores.map((store, idx) => `
+        <div class="store-item top">
+          <div class="store-info">
+            <div class="rank-badge rank-${idx + 1}">${idx + 1}</div>
+            <div>
+              <div class="store-name">${store.storeName}</div>
+              <div class="store-district">${store.district}</div>
+            </div>
+          </div>
+          <div class="store-score score-top">${store.overallScore.toFixed(1)} 分</div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">TOP 3 待改进门店</div>
+    <div class="store-list">
+      ${bottomStores.map((store, idx) => `
+        <div class="store-item bottom">
+          <div class="store-info">
+            <div class="rank-badge rank-other">${idx + 1}</div>
+            <div>
+              <div class="store-name">${store.storeName}</div>
+              <div class="store-district">${store.district}</div>
+            </div>
+          </div>
+          <div class="store-score score-bottom">${store.overallScore.toFixed(1)} 分</div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">主要问题与建议</div>
+    <div class="problem-list">
+      <div class="problem-item">
+        <span class="problem-tag red">缺货问题</span>
+        <span class="problem-content">本周缺货问题占比较高，部分门店缺货情况较为严重，建议加强供应商沟通，优化补货频次。</span>
+      </div>
+      <div class="problem-item">
+        <span class="problem-tag amber">陈列错位</span>
+        <span class="problem-content">错位问题主要集中在零食区和饮料区，建议加强店员陈列培训，明确排面责任到人。</span>
+      </div>
+      <div class="problem-item">
+        <span class="problem-tag blue">价签管理</span>
+        <span class="problem-content">价签问题有所改善，但仍有部分门店促销价签更新不及时，请店长每日开店前完成价签巡检。</span>
+      </div>
+      <div class="problem-item">
+        <span class="problem-tag purple">促销执行</span>
+        <span class="problem-content">促销整体执行良好，部分门店POP海报张贴位置不规范，建议增加专项检查。</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">下周重点工作</div>
+    <div class="todo-list">
+      <div class="todo-item"><div class="todo-check">✓</div><span>完成所有门店本周例行巡检任务，重点关注鲜食品类</span></div>
+      <div class="todo-item"><div class="todo-check">✓</div><span>跟进待改进门店的专项整改，安排复查验收</span></div>
+      <div class="todo-item"><div class="todo-check">✓</div><span>组织店长陈列标准复训，考核通过后方可上岗</span></div>
+      <div class="todo-item"><div class="todo-check">✓</div><span>配合促销活动，提前完成门店陈列调整</span></div>
+      <div class="todo-item"><div class="todo-check">✓</div><span>完成季度门店评分汇总与绩效沟通</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">门店评分明细</div>
+    <table>
+      <thead>
+        <tr>
+          <th>排名</th>
+          <th>门店名称</th>
+          <th>区域</th>
+          <th>综合评分</th>
+          <th>陈列</th>
+          <th>库存</th>
+          <th>价签</th>
+          <th>促销</th>
+          <th>整改</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filteredRankings.map(r => `
+          <tr>
+            <td>${r.rank}</td>
+            <td>${r.storeName}</td>
+            <td>${r.district}</td>
+            <td><strong>${r.overallScore.toFixed(1)}</strong></td>
+            <td>${r.displayScore}</td>
+            <td>${r.stockScore}</td>
+            <td>${r.priceTagScore}</td>
+            <td>${r.promotionScore}</td>
+            <td>${r.rectificationScore}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="report-footer">
+    本报告由智慧零售门店陈列巡检平台自动生成 | 第${weekNum}周
+  </div>
+</body>
+</html>
+    `;
+  };
+
+  const handleExportPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('请允许弹出窗口以导出PDF');
+      return;
+    }
+    printWindow.document.write(generateWeeklyReportHTML());
+    printWindow.document.close();
+    printWindow.onload = () => {
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 300);
+    };
+  };
+
+  const handleExportWeeklyReport = () => {
+    handleExportPDF();
+  };
 
   const renderStars = (score: number) => {
     const stars = Math.min(5, Math.round(score / 20));
@@ -279,7 +552,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="rounded-[10px] bg-white shadow-card p-4 space-y-4">
+      <div className="rounded-[10px] bg-white shadow-card p-4 space-y-4 no-print">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex items-center gap-2">
@@ -398,16 +671,16 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button className="inline-flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition-colors border border-slate-200">
+          <div className="flex items-center gap-2 no-print">
+            <button onClick={handleExportPDF} className="inline-flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition-colors border border-slate-200">
               <FileText className="w-4 h-4" />
               导出周报(PDF)
             </button>
-            <button className="inline-flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition-colors border border-slate-200">
+            <button onClick={handleExportExcel} className="inline-flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition-colors border border-slate-200">
               <Download className="w-4 h-4" />
               导出Excel
             </button>
-            <button className="inline-flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition-colors border border-slate-200">
+            <button onClick={handlePrint} className="inline-flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition-colors border border-slate-200">
               <Printer className="w-4 h-4" />
               打印
             </button>
@@ -1008,8 +1281,8 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
-          <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white rounded-lg text-sm font-medium transition-all shadow-sm shadow-indigo-500/20">
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end no-print">
+          <button onClick={handleExportWeeklyReport} className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white rounded-lg text-sm font-medium transition-all shadow-sm shadow-indigo-500/20">
             <FileText className="w-4 h-4" />
             生成完整周报PDF
           </button>
